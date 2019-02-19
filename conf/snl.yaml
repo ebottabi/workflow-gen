@@ -1,0 +1,55 @@
+
+global:
+  extract:
+    action_class: pipeline.crux_pdk.actions.extract.extractor.Extractor
+    connection:
+      conf: ${ {{~ftp_conn_var~}} }
+      type: ftp
+    fetch_method: fetch_directory
+    file_patterns:
+    - {{workflow_pattern}}
+    remote_path: {{workflow_path}}
+    timedelta:
+      days: 0
+  validate:
+    action_class:
+    - pipeline.crux_pdk.actions.preprocess.preprocesser.PreProcesser
+    - pipeline.crux_pdk.actions.validate.validator.Validator
+    delimiter: '|'
+    encoding: utf-8
+    error_bad_lines: true
+  standardize:
+    action_class: pipeline.crux_pdk.actions.standardize.standardizer.Standardizer
+  load:
+    action_class: pipeline.crux_pdk.actions.load.loader.Loader
+    crux_api_conf: ${ {{~api_conn_var~}} }
+    endpoint: ${API_HOST}
+
+run_uber_step: true
+
+id: {{ workflow_id }}
+pipelines:
+{{#each pipelines}}
+- id: {{ ../workflow_id }}_{{ id }}
+  global:
+    global:
+      schema_def:
+        fields:
+        {{#each fields}}
+        - name: {{name}}
+          data_type: {{spec.type}}
+          {{#if spec.format}}
+          date_format: '{{spec.format}}'
+          {{/if}}
+          {{/each}}
+  steps:
+  - id: extract
+    conf:
+      unzip_patterns:
+      - {{ mod file_pattern }}
+  - id: validate
+  - id: standardize
+  - id: load
+    conf:
+      crux_table_name: {{ ../workflow_id }}_{{ id }}
+{{/each}}
