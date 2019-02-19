@@ -25,6 +25,9 @@ glob(config.in, {}, function (er, files) {
     let special = [];
     for(let file of files) {
         let dataset = config.fileToDataset(file.split("/").slice(-1)[0], Inflector);
+        console.log("~~~~~~~~~~~~~~~~~~~~~~~~");
+        console.log(`Processing file: ${file} as dataset: ${dataset}`);
+
         let workbook = XLSX.readFile(file);
         
         let summary = workbook.Sheets["Summary"];
@@ -37,6 +40,7 @@ glob(config.in, {}, function (er, files) {
             pipelines: {},
         };
 
+        console.log("Building profile");
         while(row < 1000) {
             let cell = summary[`A${row}`];
 
@@ -82,10 +86,14 @@ glob(config.in, {}, function (er, files) {
 
             row++;
         }
-
+        
         for(let sheetname of workbook.SheetNames) {
-            if(!config.processSheet(sheetname))
+            if(!config.processSheet(sheetname)) {
+                console.log(`Ignoring sheet: ${sheetname}`);
                 continue;
+            }
+
+            console.log(`Processing sheet: ${sheetname}`);
 
             let sheet = workbook.Sheets[sheetname];
             sheetname = config.standardizeSheetname(sheetname);
@@ -95,6 +103,9 @@ glob(config.in, {}, function (er, files) {
                 id: pipelineId,
                 columns: [],
             };
+
+
+            console.log("Attributes:",{sheetname, pipelineId});
             
             let row = 1;
             while(row < 10000) {
@@ -105,6 +116,11 @@ glob(config.in, {}, function (er, files) {
                         if(!sheet[`D${row}`] || (sheet[`D${row}`].v !== 0 && !sheet[`D${row}`].v))
                             break;
     
+                        // console.log("Processing column", {
+                        //     name: sheet[`D${row}`].v,
+                        //     type: sheet[`E${row}`].v,
+                        // });
+
                         profile.pipelines[sheetname].columns.push({
                             db: {
                                 name: sheet[`D${row}`].v,
@@ -128,6 +144,7 @@ glob(config.in, {}, function (er, files) {
         }
 
 
+        console.log("Exporting profile");
         fs.writeFileSync(`${config.out}/${dataset}.profile.json`, JSON.stringify(profile, null, 2)); 
         let workflowIdStub = `${config.dataset.join("_")}_${dataset}`;
 
@@ -136,33 +153,38 @@ glob(config.in, {}, function (er, files) {
         let dailyPipelines = [];
         let historyPipelines = [];
 
+        console.log("Exporting pipelines");
         for(let n in profile.pipelines) {
-            let tempN = n;
-            if(n.startsWith("Return_") || n.startsWith("Rates_"))
-                tempN = `${n.split("_")[0]}_[type]`;
+            let pipeline = profile.pipelines[n];
+            console.log("Preparing pipeline:", pipeline.id);
 
-            let schemas = profile.schemas.filter(s => s.pattern.includes(`_${tempN}_`));
-            if(!schemas.length)
-                schemas = profile.schemas.filter(s => s.pattern.includes(`_${n}_`));
-            if(!schemas.length)
-                schemas = profile.schemas.filter(s => s.pattern.startsWith(`${n}_`));
+            let matcher = config.tempPipelineMatcher(n);
+
+            let schemas;
+            if(matcher.matchStart)
+                schemas = profile.schemas.filter(s => s.pattern.startsWith(`${matcher.name}_`));
+            else {
+                schemas = profile.schemas.filter(s => s.pattern.includes(`_${matcher.name}_`));
+
+                if(!schemas.length && matcher.name != n)
+                    schemas = profile.schemas.filter(s => s.pattern.includes(`_${n}_`));
+            }
 
             if(schemas.length == 0)
                 throw `failed to locate schema for pipeline: ${n}`
             else if(schemas.length > 1)
                 throw [`matched too many schemas for pipeline: ${n} with id: ${pipeline.id}`, JSON.stringify(schemas)];
             
-            let pipeline = profile.pipelines[n];
             dailyPipelines.push({
                 id: pipeline.id,
-                file_pattern: schemas[0].pattern.replace(tempN, n),
+                file_pattern: matcher.replace ? schemas[0].pattern.replace(matcher.name, n) : schemas[0].pattern,
                 fields: pipeline.columns.map(c => {return {name: c.crux.name, spec: c.crux.spec};}),
             });
 
             if(schemas[0].history)
                 historyPipelines.push({
                     id: pipeline.id,
-                    file_pattern: schemas[0].pattern.replace(tempN, n),
+                    file_pattern: matcher.replace ? schemas[0].pattern.replace(matcher.name, n) : schemas[0].pattern,
                     fields: pipeline.columns.map(c => {return {name: c.crux.name, spec: c.crux.spec};}),
                 });
         }
@@ -175,11 +197,13 @@ glob(config.in, {}, function (er, files) {
             workflow_path: profile.daily.paths.full,
             pipelines: dailyPipelines,
         };
-        
+
+        console.log("Exporting daily full");
         Handlebars.registerHelper("mod", (str) => str.replace("D*", "") );
         let workflow = template(workflowVars);
         fs.writeFileSync(`${outDir}/${workflowIdStub}_daily_full.yaml`, workflow);
         
+        console.log("Exporting daily deltas");
         Handlebars.registerHelper("mod", (str) => str.replace("D*", "D") );
         workflowVars = Object.assign(workflowVars, {
             workflow_id: `${workflowIdStub}_daily_deltas`,
@@ -200,6 +224,7 @@ glob(config.in, {}, function (er, files) {
                 pipelines: historyPipelines,
             });        
 
+            console.log("Exporting history full");
             Handlebars.registerHelper("mod", (str) => str.replace("D*", "") );
             workflow = template(workflowVars);
             fs.writeFileSync(`${outDir}/${workflowIdStub}_history_full.yaml`, workflow);
@@ -210,14 +235,19 @@ glob(config.in, {}, function (er, files) {
                 workflow_path: profile.history.paths.deltas,
             });        
 
+            console.log("Exporting history deltas");
             Handlebars.registerHelper("mod", (str) => str.replace("D*", "D") );
             workflow = template(workflowVars);
             fs.writeFileSync(`${outDir}/${workflowIdStub}_history_deltas.yaml`, workflow);
         }
+        else {
+            console.log("Dataset does not have history");
+        }
         
-        
+        console.log("File complete");
     }
 
+    console.log("~Processing complete~");
     //console.log(types.filter((value, index, self) => self.indexOf(value) === index));
     //console.log(special.filter((value, index, self) => self.indexOf(value) === index));
 });

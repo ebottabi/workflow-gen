@@ -44,6 +44,20 @@ module.exports =
             .replace("AttributableReservesandResourc", "AttributableReservesandResources")
             .replace("(Industry)", "MetalsMining");
     },  
+    tempPipelineMatcher: (sheetname) => {
+        if(sheetname.startsWith("Return_") || sheetname.startsWith("Rates_"))
+            return {
+                name: `${sheetname.split("_")[0]}_[type]`, 
+                replace: true,
+                matchStart: false,
+            };
+
+        return {
+            name: sheetname, 
+            replace: false,
+            matchStart: false,
+        };
+    },
 
     processSheet: (sheetname) => sheetname != "Summary" && !sheetname.startsWith("ER Diagram") && sheetname != "Sheet1",    
 }

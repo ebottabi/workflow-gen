@@ -3,7 +3,8 @@
     "version": "1.0.0",
     "devDependencies": {},
     "scripts": {
-        "mm": "node snl.js mm"
+        "mm": "node snl.js mm",
+        "media": "node snl.js media"
     },
     "dependencies": {
         "glob": "^7.1.3",

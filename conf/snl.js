@@ -23,11 +23,17 @@ module.exports = {
                     .replace("¢", "CENTS")
                     .replace("°", "DEGREES")
                     .replace("³", "CUBED")
+                    .replace("&", "AMPERSAND")
                     .replace(/[\W_]+/g, " ")
                     .trim()
                     .replace(/ {1,}/g, "_");
     },
     standardizeSheetname: (sheetname, inflector) => sheetname,
+    tempPipelineMatcher: (sheetname) => {return {
+        name: sheetname, 
+        replace: false,
+        matchStart: false,
+    }},
     db2Crux: (type) => {
         switch(type){
             case 'char':
@@ -36,6 +42,7 @@ module.exports = {
             case 'varchar(max)':
             case 'nvarchar':
             case 'nvarchar(max)':
+            case 'uniqueidentifier':
                 return { type: "STRING" }
             case 'tinyint':
             case 'bigint':
