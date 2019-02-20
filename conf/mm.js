@@ -52,6 +52,13 @@ module.exports =
                 matchStart: false,
             };
 
+        if(sheetname == "UniversalIDs_MetalsMining")
+            return {
+                name: sheetname, 
+                replace: false,
+                matchStart: true,
+            };
+
         return {
             name: sheetname, 
             replace: false,
